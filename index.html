@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Quote Text Converter</title>
+    <link rel="icon" type="image/png" href="Icon.png">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin-left: 25px; /* Adding indentation to the left side of the page */
+      }
+      .warning {
+        color: red;
+      }
+      .hidden {
+        display: none;
+      }
+      .blue {
+        color: blue;
+        font-size: 14px; /* Making the message smaller */
+      }
+      .gray {
+        color: gray;
+        font-size: 12px; /* Smaller font for result textbox output */
+      }
+      .bold {
+        font-weight: bold;
+      }
+      button {
+        font-size: 14px;
+        padding: 10px;
+        margin: 5px;
+      }
+      #convertButton {
+        background-color: #007BFF; /* Blue */
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      #restartButton {
+        background-color: #f44336; /* Red */
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      #result {
+        font-size: 14px; /* Smaller font for the result textbox */
+        color: gray; /* Gray text color */
+        width: 450px; /* Default size */
+        height: 400px; /* Default size */
+      }
+      h1 {
+        font-size: 24px; /* Smaller font for the title */
+      }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+  </head>
+  <body>
+    <h1>Quote Text Converter</h1>
+    <form id="quoteForm" onsubmit="return processFiles()">
+      <label for="quote_file">1. Upload quote (.csv):</label>
+      <input type="file" id="quote_file" name="quote_file" accept=".csv"><br><br>
+
+      <label for="product_list">2. Upload Product List (.xlsx):</label>
+      <input type="file" id="product_list" name="product_list" accept=".xlsx"><br><br>
+
+      <label for="color">3. Select color:</label>
+      <select id="color" name="color">
+        <option value="">--Select Color--</option>
+        <option value="A7">A7</option>
+        <option value="B5">B5</option>
+        <option value="B6">B6</option>
+        <option value="B7">B7</option>
+        <option value="B8">B8</option>
+        <option value="CO66">CO66</option>
+        <option value="E1">E1</option>
+        <option value="E2">E2</option>
+        <option value="E3">E3</option>
+        <option value="H8">H8</option>
+        <option value="H9">H9</option>
+        <option value="J5">J5</option>
+        <option value="K10">K10</option>
+        <option value="K3">K3</option>
+        <option value="K8">K8</option>
+        <option value="M01">M01</option>
+        <option value="S1">S1</option>
+        <option value="S2">S2</option>
+        <option value="S5">S5</option>
+        <option value="S8">S8</option>
+      </select><br><br>
+
+      <button type="submit" id="convertButton">Convert</button>
+      <button type="button" id="restartButton" onclick="restartForm()">Restart</button>
+      <span id="warning" class="warning hidden">Please complete all three steps before clicking Convert.</span><br><br>
+
+      <label for="result">Result:</label><br>
+      <textarea id="result" rows="10" cols="50" readonly></textarea><br>
+      <span id="totalProducts" class="blue hidden">Total <span id="totalQty" class="bold">X</span> products converted. Please check if this aligns with total quote quantity. Some items might be missing as it failed to be converted.</span>
+    </form>
+
+    <script>
+      function checkInputs() {
+        const color = document.getElementById('color').value;
+        const quoteFile = document.getElementById('quote_file').files[0];
+        const productListFile = document.getElementById('product_list').files[0];
+
+        if (!color || !quoteFile || !productListFile) {
+          document.getElementById('warning').classList.remove('hidden');
+          return false;
+        }
+        document.getElementById('warning').classList.add('hidden');
+        return true;
+      }
+
+      function restartForm() {
+        document.getElementById('quote_file').value = '';
+        document.getElementById('result').value = '';
+        document.getElementById('totalProducts').classList.add('hidden');
+        document.getElementById('warning').classList.add('hidden');
+      }
+
+      function processFiles() {
+        if (!checkInputs()) return false;
+
+        const quoteFile = document.getElementById('quote_file').files[0];
+        const productListFile = document.getElementById('product_list').files[0];
+
+        const color = document.getElementById('color').value;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const csvData = e.target.result;
+          const quoteData = csvData.split('\n').slice(1, 301).map(row => row.split(',')); // Assuming Manuf. code is the 4th column (index 3)
+          const manufCodes = quoteData.map(row => row[3]);
+
+          console.log('Manufacturer Codes:', manufCodes);
+
+          const reader2 = new FileReader();
+          reader2.onload = function (e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const productList = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+            console.log('Product List:', productList);
+
+            const results = [];
+            manufCodes.forEach(manufCode => {
+              productList.forEach(row => {
+                if (row[0] === color && row[1] === manufCode) {
+                  const itemCode = row[2];
+                  const existingItem = results.find(item => item.startsWith(itemCode));
+                  if (existingItem) {
+                    const index = results.indexOf(existingItem);
+                    const qty = parseInt(existingItem.split('\t')[1]) + 1;
+                    results[index] = `${itemCode}\t${qty}`;
+                  } else {
+                    results.push(`${itemCode}\t1`);
+                  }
+                }
+              });
+            });
+
+            console.log('Results:', results);
+            document.getElementById('result').value = results.join('\n');
+
+            const totalQty = results.reduce((total, item) => total + parseInt(item.split('\t')[1]), 0);
+            document.getElementById('totalQty').textContent = totalQty;
+            document.getElementById('totalProducts').classList.remove('hidden');
+          };
+          reader2.readAsArrayBuffer(productListFile);
+        };
+        reader.readAsText(quoteFile);
+
+        return false;
+      }
+    </script>
+  </body>
+</html>
